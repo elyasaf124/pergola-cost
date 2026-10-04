@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom"
 import { Plus } from "lucide-react"
 import { toast } from "sonner"
 import { ProjectFormDialog } from "@/components/project-form"
-import { EmptyState, ErrorState, LoadingState } from "@/components/states"
+import { EmptyState, ErrorState, LoadingState, LockedState } from "@/components/states"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -42,6 +42,7 @@ export function ProjectsPage() {
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   }, [data.projects, query, status])
 
+  if (data.locked) return <LockedState />
   if (data.loading && !data.ready) return <LoadingState />
   if (data.error) return <ErrorState message={data.error} onRetry={() => void data.reload()} />
 

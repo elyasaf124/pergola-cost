@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 
 export function LoadingState({ label = "טוען את הנתונים…" }: { label?: string }) {
@@ -22,6 +23,20 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
           נסו שוב
         </Button>
       ) : null}
+    </div>
+  )
+}
+
+export function LockedState() {
+  return (
+    <div className="rounded-xl border bg-card p-5">
+      <h2 className="text-base font-semibold">הנתונים נעולים</h2>
+      <p className="mt-1 text-sm leading-6 text-muted-foreground">
+        בייצור צריך להזין את הסיסמה לפני שאפשר לראות פרויקטים. מצב פיתוח על המחשב המקומי לא נועל את המסד.
+      </p>
+      <Button asChild className="mt-4 h-11">
+        <Link to="/settings">להגדרות</Link>
+      </Button>
     </div>
   )
 }

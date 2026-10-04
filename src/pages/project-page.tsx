@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { Field } from "@/components/field"
 import { ProjectFormDialog } from "@/components/project-form"
-import { EmptyState, ErrorState, LoadingState } from "@/components/states"
+import { EmptyState, ErrorState, LoadingState, LockedState } from "@/components/states"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -85,13 +85,14 @@ export function ProjectPage() {
     includeVat: data.settings.includeVat,
   })
 
+  if (data.locked) return <LockedState />
   if (data.loading && !data.ready) return <LoadingState />
   if (data.error) return <ErrorState message={data.error} onRetry={() => void data.reload()} />
   if (!project) {
     return (
       <EmptyState
         title="הפרויקט לא נמצא"
-        body="ייתכן שנמחק, או שהקישור לא שייך לנתונים שבמכשיר הזה."
+        body="ייתכן שהפרויקט נמחק, או שהקישור לא שייך למסד הפעיל."
         action={
           <Button asChild className="h-11">
             <Link to="/">חזרה לפרויקטים</Link>

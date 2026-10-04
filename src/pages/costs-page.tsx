@@ -3,7 +3,7 @@ import { Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { Field } from "@/components/field"
-import { EmptyState, ErrorState, LoadingState } from "@/components/states"
+import { EmptyState, ErrorState, LoadingState, LockedState } from "@/components/states"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -39,6 +39,7 @@ export function GlobalCostsPage() {
   const [editing, setEditing] = useState<GlobalCost | null>(null)
   const [removing, setRemoving] = useState<GlobalCost | null>(null)
 
+  if (data.locked) return <LockedState />
   if (data.loading && !data.ready) return <LoadingState />
   if (data.error) return <ErrorState message={data.error} onRetry={() => void data.reload()} />
 

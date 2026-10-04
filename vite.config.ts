@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { VitePWA } from "vite-plugin-pwa"
 import { defineConfig } from "vite"
+import { apiPlugin } from "./server/attach.ts"
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
 
@@ -11,6 +12,7 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    apiPlugin(),
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg", "pwa-192.png", "pwa-512.png"],
@@ -34,6 +36,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2}"],
         navigateFallback: "index.html",
+        navigateFallbackDenylist: [/^\/api/],
       },
     }),
   ],

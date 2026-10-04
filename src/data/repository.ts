@@ -9,7 +9,7 @@ import type {
 } from "@/data/types"
 
 export interface Repository {
-  readonly mode: "local" | "firestore"
+  readonly mode: "development" | "production"
   loadAll(): Promise<BackupData>
   saveCatalogItem(item: CatalogItem): Promise<void>
   deleteCatalogItem(id: string): Promise<void>

@@ -7,13 +7,10 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import type { User } from "firebase/auth"
+import { createApiRepository, fetchStatus, login as loginRequest, logout as logoutRequest } from "@/data/api"
 import { parseBackup } from "@/data/backup"
-import {
-  createFirestoreRepository,
-  createLocalRepository,
-  type Repository,
-} from "@/data/index"
+import type { Repository } from "@/data/repository"
+import type { ServerStatus } from "@/data/api"
 import type {
   AppSettings,
   BackupData,
@@ -24,31 +21,18 @@ import type {
   ProjectOverhead,
 } from "@/data/types"
 import { DEFAULT_SETTINGS } from "@/data/types"
-import {
-  authErrorMessage,
-  completeGoogleRedirect,
-  isFirebaseConfigured,
-  signInWithGoogle,
-  signOutGoogle,
-  watchAuth,
-} from "@/lib/firebase"
 import { createId, nowIso, overheadFromGlobal } from "@/lib/records"
 
 export type ProjectDraft = Omit<Project, "id" | "createdAt" | "updatedAt">
 
-interface SessionUser {
-  uid: string
-  email: string | null
-  displayName: string | null
-}
-
 interface DataApi {
   ready: boolean
   loading: boolean
+  locked: boolean
   error: string | null
-  mode: "local" | "firestore"
-  firebaseConfigured: boolean
-  user: SessionUser | null
+  mode: "development" | "production"
+  passwordRequired: boolean
+  authenticated: boolean
   catalog: CatalogItem[]
   projects: Project[]
   lines: ProjectLine[]
@@ -56,8 +40,8 @@ interface DataApi {
   overheads: ProjectOverhead[]
   settings: AppSettings
   reload: () => Promise<void>
-  signIn: () => Promise<void>
-  signOut: () => Promise<void>
+  login: (password: string) => Promise<void>
+  logout: () => Promise<void>
   saveCatalogItem: (item: CatalogItem) => Promise<void>
   deleteCatalogItem: (id: string) => Promise<void>
   createProject: (draft: ProjectDraft) => Promise<Project>
@@ -72,15 +56,12 @@ interface DataApi {
   saveSettings: (settings: AppSettings) => Promise<void>
   exportBackup: () => BackupData
   importBackup: (input: unknown) => Promise<void>
-  copyLocalToAccount: () => Promise<void>
 }
 
 const DataContext = createContext<DataApi | null>(null)
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const configured = isFirebaseConfigured()
-  const [user, setUser] = useState<User | null>(null)
-  const [authReady, setAuthReady] = useState(!configured)
+  const [status, setStatus] = useState<ServerStatus | null>(null)
   const [data, setData] = useState<BackupData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -93,38 +74,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [data])
 
   useEffect(() => {
-    if (!configured) {
-      setAuthReady(true)
-      return
-    }
-    let active = true
-    void completeGoogleRedirect().catch((err) => {
-      console.warn("Google redirect result failed", err)
-    })
-    const unsubscribe = watchAuth((next) => {
-      if (!active) return
-      setUser(next)
-      setAuthReady(true)
-    })
-    return () => {
-      active = false
-      unsubscribe()
-    }
-  }, [configured])
-
-  useEffect(() => {
-    if (!authReady) return
     let cancelled = false
-    const repo =
-      configured && user ? createFirestoreRepository(user.uid) : createLocalRepository()
-    repoRef.current = repo
     setLoading(true)
     setError(null)
-    setData(null)
-    dataRef.current = null
-    repo
-      .loadAll()
-      .then((loaded) => {
+    fetchStatus()
+      .then(async (nextStatus) => {
+        if (cancelled) return
+        setStatus(nextStatus)
+        const locked = nextStatus.passwordRequired && !nextStatus.authenticated
+        if (locked) {
+          repoRef.current = null
+          dataRef.current = null
+          setData(null)
+          setLoading(false)
+          return
+        }
+        const repo = createApiRepository(nextStatus.mode)
+        repoRef.current = repo
+        const loaded = await repo.loadAll()
         if (cancelled) return
         dataRef.current = loaded
         setData(loaded)
@@ -133,16 +100,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
       .catch((err: unknown) => {
         console.error(err)
         if (cancelled) return
-        setError("לא הצלחנו לטעון את הנתונים. בדקו את החיבור ונסו שוב.")
+        setError(
+          err instanceof Error
+            ? err.message
+            : "לא הצלחנו לטעון את הנתונים. בדקו שהשרת רץ ונסו שוב.",
+        )
         setLoading(false)
       })
     return () => {
       cancelled = true
     }
-  }, [authReady, configured, user, reloadKey])
+  }, [reloadKey])
+
+  const locked = Boolean(status?.passwordRequired && !status.authenticated)
 
   const api = useMemo<DataApi>(() => {
-    const mode: "local" | "firestore" = configured && user ? "firestore" : "local"
     const settings = data?.settings ?? DEFAULT_SETTINGS
 
     async function mutate(
@@ -165,14 +137,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
 
     return {
-      ready: authReady && !loading && data != null && error == null,
-      loading: !authReady || loading,
+      ready: !loading && data != null && error == null && !locked,
+      loading,
+      locked,
       error,
-      mode,
-      firebaseConfigured: configured,
-      user: user
-        ? { uid: user.uid, email: user.email, displayName: user.displayName }
-        : null,
+      mode: status?.mode ?? "development",
+      passwordRequired: Boolean(status?.passwordRequired),
+      authenticated: Boolean(status?.authenticated),
       catalog: data?.catalog ?? [],
       projects: data?.projects ?? [],
       lines: data?.lines ?? [],
@@ -182,23 +153,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
       reload: async () => {
         setReloadKey((value) => value + 1)
       },
-      signIn: async () => {
-        if (!configured) throw new Error("Firebase לא הוגדר במכשיר הזה.")
-        try {
-          await signInWithGoogle()
-        } catch (err) {
-          throw new Error(authErrorMessage(err))
-        }
+      login: async (password: string) => {
+        await loginRequest(password)
+        setReloadKey((value) => value + 1)
       },
-      signOut: async () => {
-        await signOutGoogle()
+      logout: async () => {
+        await logoutRequest()
+        setReloadKey((value) => value + 1)
       },
       saveCatalogItem: (item) =>
         mutate(
-          (current) => ({
-            ...current,
-            catalog: upsert(current.catalog, item),
-          }),
+          (current) => ({ ...current, catalog: upsert(current.catalog, item) }),
           (repo) => repo.saveCatalogItem(item),
         ),
       deleteCatalogItem: (id) =>
@@ -233,10 +198,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       saveProject: (project) => {
         const next = { ...project, updatedAt: nowIso() }
         return mutate(
-          (current) => ({
-            ...current,
-            projects: upsert(current.projects, next),
-          }),
+          (current) => ({ ...current, projects: upsert(current.projects, next) }),
           (repo) => repo.saveProject(next),
         )
       },
@@ -306,18 +268,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           (repo) => repo.replaceAll(parsed),
         )
       },
-      copyLocalToAccount: async () => {
-        if (mode !== "firestore") {
-          throw new Error("אפשר להעתיק לחשבון רק אחרי התחברות.")
-        }
-        const local = await createLocalRepository().loadAll()
-        await mutate(
-          () => local,
-          (repo) => repo.replaceAll(local),
-        )
-      },
     }
-  }, [authReady, configured, data, error, loading, user])
+  }, [data, error, loading, locked, status])
 
   return <DataContext.Provider value={api}>{children}</DataContext.Provider>
 }

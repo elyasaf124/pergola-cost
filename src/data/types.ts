@@ -95,7 +95,3 @@ export const DEFAULT_SETTINGS: AppSettings = {
   vatRate: 18,
   includeVat: false,
 }
-
-export interface StoreMeta {
-  initialized: boolean
-}
