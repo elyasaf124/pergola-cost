@@ -18,7 +18,7 @@ app.get("*", async (c, next) => {
   return serveStatic({ path: "./dist/index.html" })(c, next)
 })
 
-const port = 5391
+const port = Number(process.env.PORT) || 5391
 serve({ fetch: app.fetch, hostname: "0.0.0.0", port }, (info) => {
   console.log(`עלות פרגולה מאזינה על http://${info.address}:${info.port}`)
 })

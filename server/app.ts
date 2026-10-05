@@ -77,7 +77,9 @@ export function createApp(): Hono {
       sameSite: "Lax",
       path: "/",
       maxAge: MAX_AGE,
-      secure: new URL(c.req.url).protocol === "https:",
+      secure:
+        c.req.header("x-forwarded-proto")?.split(",")[0]?.trim() === "https" ||
+        new URL(c.req.url).protocol === "https:",
     })
     return c.json({ ok: true, authenticated: true })
   })
