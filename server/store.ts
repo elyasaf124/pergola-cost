@@ -1,8 +1,18 @@
 import type { Database, Sql } from "./sql.ts"
 
+export interface CatalogGroupRow {
+  id: string
+  name: string
+  sortOrder: number
+  pricingRole: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface BackupData {
   version: 1
   exportedAt: string
+  catalogGroups: CatalogGroupRow[]
   catalog: CatalogRow[]
   projects: ProjectRow[]
   lines: LineRow[]
@@ -113,6 +123,17 @@ function bind(values: unknown[]): unknown[] {
   return values.map((value) => (value === undefined ? null : value))
 }
 
+function mapCatalogGroup(row: Record<string, unknown>): CatalogGroupRow {
+  return {
+    id: text(row.id),
+    name: text(row.name),
+    sortOrder: requiredNumber(row.sort_order),
+    pricingRole: text(row.pricing_role),
+    createdAt: text(row.created_at),
+    updatedAt: text(row.updated_at),
+  }
+}
+
 function mapCatalog(row: Record<string, unknown>): CatalogRow {
   return {
     id: text(row.id),
@@ -197,7 +218,8 @@ function mapOverhead(row: Record<string, unknown>): OverheadRow {
 }
 
 export async function loadAll(sql: Sql): Promise<BackupData> {
-  const [catalog, projects, lines, globalCosts, overheads, settings] = await Promise.all([
+  const [catalogGroups, catalog, projects, lines, globalCosts, overheads, settings] = await Promise.all([
+    sql.query("SELECT * FROM catalog_groups ORDER BY sort_order ASC, name ASC"),
     sql.query("SELECT * FROM catalog ORDER BY created_at DESC"),
     sql.query("SELECT * FROM projects ORDER BY updated_at DESC"),
     sql.query("SELECT * FROM lines ORDER BY created_at DESC"),
@@ -209,6 +231,7 @@ export async function loadAll(sql: Sql): Promise<BackupData> {
   return {
     version: 1,
     exportedAt: new Date().toISOString(),
+    catalogGroups: catalogGroups.map(mapCatalogGroup),
     catalog: catalog.map(mapCatalog),
     projects: projects.map(mapProject),
     lines: lines.map(mapLine),
@@ -219,6 +242,35 @@ export async function loadAll(sql: Sql): Promise<BackupData> {
       includeVat: settingsRow ? Boolean(settingsRow.include_vat) : false,
     },
   }
+}
+
+export async function saveCatalogGroup(sql: Sql, group: CatalogGroupRow): Promise<void> {
+  await sql.query(
+    `INSERT INTO catalog_groups (id, name, sort_order, pricing_role, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (id) DO UPDATE SET
+       name = EXCLUDED.name,
+       sort_order = EXCLUDED.sort_order,
+       pricing_role = EXCLUDED.pricing_role,
+       updated_at = EXCLUDED.updated_at`,
+    bind([
+      group.id,
+      group.name,
+      group.sortOrder,
+      group.pricingRole,
+      group.createdAt,
+      group.updatedAt,
+    ]),
+  )
+}
+
+export async function deleteCatalogGroup(sql: Sql, id: string): Promise<void> {
+  const rows = await sql.query("SELECT COUNT(*) AS count FROM catalog WHERE category = $1", [id])
+  const count = Number(rows[0]?.count ?? 0)
+  if (count > 0) {
+    throw new Error("לא ניתן למחוק טבלה שיש בה פריטים")
+  }
+  await sql.query("DELETE FROM catalog_groups WHERE id = $1", [id])
 }
 
 export async function saveCatalogItem(sql: Sql, item: CatalogRow): Promise<void> {
@@ -429,7 +481,9 @@ export async function replaceAll(db: Database, data: BackupData): Promise<void> 
     await sql.query("DELETE FROM overheads")
     await sql.query("DELETE FROM projects")
     await sql.query("DELETE FROM catalog")
+    await sql.query("DELETE FROM catalog_groups")
     await sql.query("DELETE FROM global_costs")
+    for (const group of data.catalogGroups) await saveCatalogGroup(sql, group)
     for (const item of data.catalog) await saveCatalogItem(sql, item)
     for (const project of data.projects) await saveProject(sql, project)
     for (const line of data.lines) await saveLine(sql, line)

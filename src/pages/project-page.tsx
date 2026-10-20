@@ -26,11 +26,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useData, type ProjectDraft } from "@/data/context"
-import type { CatalogItem, GlobalCost, Project, ProjectLine, ProjectOverhead } from "@/data/types"
+import type { CatalogGroup, CatalogItem, GlobalCost, Project, ProjectLine, ProjectOverhead } from "@/data/types"
 import { formatIls, formatPercent, formatQty, parseNumber } from "@/lib/format"
 import {
-  CATEGORIES,
-  CATEGORY_LABEL,
   OVERHEAD_LABEL,
   STATUS_LABEL,
   UNIT_LABEL,
@@ -40,11 +38,16 @@ import {
   unitPricePreview,
 } from "@/lib/labels"
 import {
+  categoryLabel,
+  pricingRoleForCategory,
+  projectCostLines,
+  sortCatalogGroups,
+} from "@/lib/catalog-groups"
+import {
   catalogUnitPrice,
   lineCost,
   overheadAmount,
   projectCost,
-  type Category,
   type OverheadKind,
   type PriceUnit,
 } from "@/lib/pricing"
@@ -78,7 +81,7 @@ export function ProjectPage() {
     [data.overheads, id],
   )
   const summary = projectCost({
-    lines,
+    lines: projectCostLines(lines, data.catalogGroups),
     overheads,
     sellingPrice: project?.sellingPrice,
     vatRate: data.settings.vatRate,
@@ -102,10 +105,12 @@ export function ProjectPage() {
     )
   }
 
-  const groups = CATEGORIES.map((category) => ({
-    category,
-    lines: lines.filter((line) => line.category === category),
-  })).filter((group) => group.lines.length > 0)
+  const groups = sortCatalogGroups(data.catalogGroups)
+    .map((group) => ({
+      group,
+      lines: lines.filter((line) => line.category === group.id),
+    }))
+    .filter((entry) => entry.lines.length > 0)
 
   async function saveDraft(draft: ProjectDraft) {
     await data.saveProject({ ...project!, ...draft, id: project!.id, createdAt: project!.createdAt, updatedAt: project!.updatedAt })
@@ -164,6 +169,7 @@ export function ProjectPage() {
 
       <QuickAdd
         catalog={data.catalog}
+        catalogGroups={data.catalogGroups}
         onAdd={async (item, quantity) => {
           const line = lineFromCatalog(project.id, item, quantity)
           await data.saveLine(line)
@@ -180,8 +186,8 @@ export function ProjectPage() {
       ) : (
         <div className="grid gap-5">
           {groups.map((group) => (
-            <section key={group.category} className="grid gap-2">
-              <h2 className="text-sm font-medium text-muted-foreground">{CATEGORY_LABEL[group.category]}</h2>
+            <section key={group.group.id} className="grid gap-2">
+              <h2 className="text-sm font-medium text-muted-foreground">{group.group.name}</h2>
               <ul className="grid gap-2">
                 {group.lines.map((line) => (
                   <li key={line.id}>
@@ -189,7 +195,7 @@ export function ProjectPage() {
                       <CardContent className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <h3 className="font-medium">{line.name}</h3>
-                          <p className="mt-1 text-sm text-muted-foreground">{lineFormula(line)}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">{lineFormula(line, data.catalogGroups)}</p>
                           <p className="mt-1 text-base font-semibold tabular-nums">{formatIls(lineCost(line.quantity, line.unitPrice))}</p>
                         </div>
                         <div className="flex shrink-0 gap-1">
@@ -279,6 +285,7 @@ export function ProjectPage() {
       />
       <FreeformDialog
         open={freeOpen}
+        catalogGroups={data.catalogGroups}
         onOpenChange={setFreeOpen}
         onSubmit={async (line) => {
           await data.saveLine({ ...line, projectId: project.id })
@@ -287,6 +294,7 @@ export function ProjectPage() {
       />
       <LineDialog
         line={lineEditing}
+        catalogGroups={data.catalogGroups}
         onOpenChange={(open) => {
           if (!open) setLineEditing(null)
         }}
@@ -422,10 +430,12 @@ function SummaryCard({
 
 function QuickAdd({
   catalog,
+  catalogGroups,
   onAdd,
   onFreeform,
 }: {
   catalog: CatalogItem[]
+  catalogGroups: CatalogGroup[]
   onAdd: (item: CatalogItem, quantity: number) => Promise<void>
   onFreeform: () => void
 }) {
@@ -502,9 +512,13 @@ function QuickAdd({
                   >
                     <span>
                       {item.name}
-                      <span className="mt-0.5 block text-xs text-muted-foreground">{CATEGORY_LABEL[item.category]}</span>
+                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                        {categoryLabel(item.category, catalogGroups)}
+                      </span>
                     </span>
-                    <span className="shrink-0 tabular-nums">{unitPricePreview(item.unit, item.category, catalogUnitPrice(item))}</span>
+                    <span className="shrink-0 tabular-nums">
+                      {unitPricePreview(item.unit, item.category, catalogUnitPrice(item), catalogGroups)}
+                    </span>
                   </button>
                 </li>
               ))}
@@ -513,9 +527,11 @@ function QuickAdd({
         </div>
         {selected ? (
           <p className="text-sm text-muted-foreground">
-            {unitPricePreview(selected.unit, selected.category, catalogUnitPrice(selected))}
+            {unitPricePreview(selected.unit, selected.category, catalogUnitPrice(selected), catalogGroups)}
             {selected.unit === "kg" ? " · מקלידים מטרים" : null}
-            {selected.unit === "pack" || selected.category === "screws" ? " · מקלידים כמה יחידות יצאו" : null}
+            {selected.unit === "pack" || pricingRoleForCategory(selected.category, catalogGroups) === "screws"
+              ? " · מקלידים כמה יחידות יצאו"
+              : null}
           </p>
         ) : null}
         <div className="flex gap-2">
@@ -523,7 +539,9 @@ function QuickAdd({
             className="touch-field tabular-nums"
             inputMode="decimal"
             value={quantity}
-            placeholder={selected ? `כמות (${quantityNoun(selected.unit, selected.category)})` : "כמות"}
+            placeholder={
+              selected ? `כמות (${quantityNoun(selected.unit, selected.category, catalogGroups)})` : "כמות"
+            }
             onChange={(event) => setQuantity(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
@@ -543,15 +561,17 @@ function QuickAdd({
 
 function FreeformDialog({
   open,
+  catalogGroups,
   onOpenChange,
   onSubmit,
 }: {
   open: boolean
+  catalogGroups: CatalogGroup[]
   onOpenChange: (open: boolean) => void
   onSubmit: (line: ProjectLine) => Promise<void>
 }) {
   const [name, setName] = useState("")
-  const [category, setCategory] = useState<Category>("other")
+  const [category, setCategory] = useState<string>("other")
   const [unit, setUnit] = useState<PriceUnit>("unit")
   const [quantity, setQuantity] = useState("1")
   const [unitPrice, setUnitPrice] = useState("")
@@ -590,15 +610,15 @@ function FreeformDialog({
             <Input className="touch-field" value={name} onChange={(event) => setName(event.target.value)} />
           </Field>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="קטגוריה">
-              <Select value={category} onValueChange={(value) => setCategory(value as Category)}>
+            <Field label="טבלה במחירון">
+              <Select value={category} onValueChange={setCategory}>
                 <SelectTrigger className="touch-field w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {CATEGORIES.map((value) => (
-                    <SelectItem key={value} value={value}>
-                      {CATEGORY_LABEL[value]}
+                  {sortCatalogGroups(catalogGroups).map((group) => (
+                    <SelectItem key={group.id} value={group.id}>
+                      {group.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -623,7 +643,7 @@ function FreeformDialog({
             <Field label="כמות">
               <Input className="touch-field tabular-nums" inputMode="decimal" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
             </Field>
-            <Field label={`מחיר ${perUnitPhrase(unit, category)} (₪)`}>
+            <Field label={`מחיר ${perUnitPhrase(unit, category, catalogGroups)} (₪)`}>
               <Input className="touch-field tabular-nums" inputMode="decimal" value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} />
             </Field>
           </div>
@@ -640,10 +660,12 @@ function FreeformDialog({
 
 function LineDialog({
   line,
+  catalogGroups,
   onOpenChange,
   onSubmit,
 }: {
   line: ProjectLine | null
+  catalogGroups: CatalogGroup[]
   onOpenChange: (open: boolean) => void
   onSubmit: (line: ProjectLine) => Promise<void>
 }) {
@@ -690,7 +712,11 @@ function LineDialog({
           <Field label="שם">
             <Input className="touch-field" value={name} onChange={(event) => setName(event.target.value)} />
           </Field>
-          <Field label={line ? `כמות (${quantityNoun(line.unit, line.category)})` : "כמות"}>
+          <Field
+            label={
+              line ? `כמות (${quantityNoun(line.unit, line.category, catalogGroups)})` : "כמות"
+            }
+          >
             <Input className="touch-field tabular-nums" inputMode="decimal" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
           </Field>
           <Field label="מחיר ליחידת כמות (₪)">

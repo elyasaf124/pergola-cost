@@ -14,6 +14,7 @@ import type { ServerStatus } from "@/data/api"
 import type {
   AppSettings,
   BackupData,
+  CatalogGroup,
   CatalogItem,
   GlobalCost,
   Project,
@@ -21,6 +22,7 @@ import type {
   ProjectOverhead,
 } from "@/data/types"
 import { DEFAULT_SETTINGS } from "@/data/types"
+import { normalizeCatalogGroups } from "@/lib/catalog-groups"
 import { createId, nowIso, overheadFromGlobal } from "@/lib/records"
 
 export type ProjectDraft = Omit<Project, "id" | "createdAt" | "updatedAt">
@@ -33,6 +35,7 @@ interface DataApi {
   mode: "development" | "production"
   passwordRequired: boolean
   authenticated: boolean
+  catalogGroups: CatalogGroup[]
   catalog: CatalogItem[]
   projects: Project[]
   lines: ProjectLine[]
@@ -42,6 +45,8 @@ interface DataApi {
   reload: () => Promise<void>
   login: (password: string) => Promise<void>
   logout: () => Promise<void>
+  saveCatalogGroup: (group: CatalogGroup) => Promise<void>
+  deleteCatalogGroup: (id: string) => Promise<void>
   saveCatalogItem: (item: CatalogItem) => Promise<void>
   deleteCatalogItem: (id: string) => Promise<void>
   createProject: (draft: ProjectDraft) => Promise<Project>
@@ -92,9 +97,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const repo = createApiRepository(nextStatus.mode)
         repoRef.current = repo
         const loaded = await repo.loadAll()
+        const normalized = {
+          ...loaded,
+          catalogGroups: normalizeCatalogGroups(
+            loaded.catalogGroups,
+            loaded.catalog.map((item) => item.category),
+          ),
+        }
         if (cancelled) return
-        dataRef.current = loaded
-        setData(loaded)
+        dataRef.current = normalized
+        setData(normalized)
         setLoading(false)
       })
       .catch((err: unknown) => {
@@ -144,6 +156,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       mode: status?.mode ?? "development",
       passwordRequired: Boolean(status?.passwordRequired),
       authenticated: Boolean(status?.authenticated),
+      catalogGroups: data?.catalogGroups ?? normalizeCatalogGroups(undefined, []),
       catalog: data?.catalog ?? [],
       projects: data?.projects ?? [],
       lines: data?.lines ?? [],
@@ -161,6 +174,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
         await logoutRequest()
         setReloadKey((value) => value + 1)
       },
+      saveCatalogGroup: (group) =>
+        mutate(
+          (current) => ({ ...current, catalogGroups: upsert(current.catalogGroups, group) }),
+          (repo) => repo.saveCatalogGroup(group),
+        ),
+      deleteCatalogGroup: (id) =>
+        mutate(
+          (current) => ({
+            ...current,
+            catalogGroups: current.catalogGroups.filter((group) => group.id !== id),
+          }),
+          (repo) => repo.deleteCatalogGroup(id),
+        ),
       saveCatalogItem: (item) =>
         mutate(
           (current) => ({ ...current, catalog: upsert(current.catalog, item) }),

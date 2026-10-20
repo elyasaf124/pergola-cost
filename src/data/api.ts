@@ -1,6 +1,7 @@
 import type {
   AppSettings,
   BackupData,
+  CatalogGroup,
   CatalogItem,
   GlobalCost,
   Project,
@@ -50,6 +51,8 @@ export function createApiRepository(mode: ServerStatus["mode"]): Repository {
   return {
     mode,
     loadAll: () => request<BackupData>("/api/data"),
+    saveCatalogGroup: (group: CatalogGroup) => send("/api/catalog-groups", "PUT", group),
+    deleteCatalogGroup: (id: string) => send(`/api/catalog-groups/${encodeURIComponent(id)}`, "DELETE"),
     saveCatalogItem: (item: CatalogItem) => send("/api/catalog", "PUT", item),
     deleteCatalogItem: (id: string) => send(`/api/catalog/${encodeURIComponent(id)}`, "DELETE"),
     saveProject: (project: Project) => send("/api/projects", "PUT", project),

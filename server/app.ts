@@ -11,6 +11,7 @@ import {
   sessionTokenValid,
 } from "./session.ts"
 import {
+  deleteCatalogGroup,
   deleteCatalogItem,
   deleteGlobalCost,
   deleteLine,
@@ -18,6 +19,7 @@ import {
   deleteProject,
   loadAll,
   replaceAll,
+  saveCatalogGroup,
   saveCatalogItem,
   saveGlobalCost,
   saveLine,
@@ -25,6 +27,7 @@ import {
   saveProject,
   saveSettings,
   type BackupData,
+  type CatalogGroupRow,
   type CatalogRow,
   type GlobalCostRow,
   type LineRow,
@@ -91,6 +94,21 @@ export function createApp(): Hono {
 
   app.get("/api/data", async (c) => c.json(await loadAll(requireDatabase())))
 
+  app.put("/api/catalog-groups", async (c) => {
+    const body = await readJson<CatalogGroupRow>(c)
+    if (!body.id || !body.name?.trim()) throw new ApiError("צריך שם לטבלה")
+    await saveCatalogGroup(requireDatabase(), body)
+    return c.json({ ok: true })
+  })
+  app.delete("/api/catalog-groups/:id", async (c) => {
+    try {
+      await deleteCatalogGroup(requireDatabase(), c.req.param("id"))
+    } catch (error) {
+      throw new ApiError(error instanceof Error ? error.message : "המחיקה נכשלה")
+    }
+    return c.json({ ok: true })
+  })
+
   app.put("/api/catalog", async (c) => {
     await saveCatalogItem(requireDatabase(), await readJson<CatalogRow>(c))
     return c.json({ ok: true })
@@ -149,6 +167,7 @@ export function createApp(): Hono {
     const body = await readJson<Partial<BackupData>>(c)
     if (body.version !== 1) throw new ApiError("גרסת הגיבוי לא נתמכת")
     if (
+      !Array.isArray(body.catalogGroups) ||
       !Array.isArray(body.catalog) ||
       !Array.isArray(body.projects) ||
       !Array.isArray(body.lines) ||
@@ -162,6 +181,7 @@ export function createApp(): Hono {
     await replaceAll(requireDatabase(), {
       version: 1,
       exportedAt: typeof body.exportedAt === "string" ? body.exportedAt : new Date().toISOString(),
+      catalogGroups: body.catalogGroups,
       catalog: body.catalog,
       projects: body.projects,
       lines: body.lines,

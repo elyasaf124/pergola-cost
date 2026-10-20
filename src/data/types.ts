@@ -1,4 +1,15 @@
-import type { Category, OverheadKind, PriceUnit } from "@/lib/pricing"
+import type { Category, OverheadKind, PriceUnit, PricingRole } from "@/lib/pricing"
+
+export type { PricingRole }
+
+export interface CatalogGroup {
+  id: string
+  name: string
+  sortOrder: number
+  pricingRole: PricingRole
+  createdAt: string
+  updatedAt: string
+}
 
 export type ProjectStatus = "quote" | "in_progress" | "done"
 
@@ -83,6 +94,7 @@ export interface AppSettings {
 export interface BackupData {
   version: 1
   exportedAt: string
+  catalogGroups: CatalogGroup[]
   catalog: CatalogItem[]
   projects: Project[]
   lines: ProjectLine[]

@@ -12,6 +12,7 @@ import { useData, type ProjectDraft } from "@/data/context"
 import type { Project, ProjectStatus } from "@/data/types"
 import { formatIls, formatQty } from "@/lib/format"
 import { STATUS_LABEL } from "@/lib/labels"
+import { projectCostLines } from "@/lib/catalog-groups"
 import { projectCost } from "@/lib/pricing"
 import { cn } from "@/lib/utils"
 
@@ -121,7 +122,7 @@ function ProjectCard({ project }: { project: Project }) {
   const lines = data.lines.filter((line) => line.projectId === project.id)
   const overheads = data.overheads.filter((overhead) => overhead.projectId === project.id)
   const summary = projectCost({
-    lines,
+    lines: projectCostLines(lines, data.catalogGroups),
     overheads,
     sellingPrice: project.sellingPrice,
     vatRate: data.settings.vatRate,

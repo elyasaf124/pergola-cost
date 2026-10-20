@@ -6,6 +6,9 @@ export type Category =
   | "labor"
   | "transport"
   | "other"
+  | (string & {})
+
+export type PricingRole = "materials" | "screws" | "labor" | "transport"
 
 export type PriceUnit = "kg" | "meter" | "unit" | "sqm" | "hour" | "pack"
 
@@ -24,6 +27,7 @@ export interface CostLineInput {
   category: Category
   quantity: number
   unitPrice: number
+  pricingRole?: PricingRole
 }
 
 export interface OverheadInput {
@@ -55,7 +59,13 @@ export interface ProjectCostResult {
   marginPercent: number | null
 }
 
-const MATERIAL_CATEGORIES = new Set<Category>(["profiles", "sheets", "paint", "other"])
+function linePricingRole(line: CostLineInput): PricingRole {
+  if (line.pricingRole) return line.pricingRole
+  if (line.category === "screws") return "screws"
+  if (line.category === "labor") return "labor"
+  if (line.category === "transport") return "transport"
+  return "materials"
+}
 
 /**
  * Price of one quantity the user types in.
@@ -109,10 +119,11 @@ export function projectCost(input: ProjectCostInput): ProjectCostResult {
 
   for (const line of input.lines) {
     const cost = lineCost(line.quantity, line.unitPrice)
-    if (line.category === "screws") screws += cost
-    else if (line.category === "labor") labor += cost
-    else if (line.category === "transport") transport += cost
-    else if (MATERIAL_CATEGORIES.has(line.category)) materials += cost
+    const role = linePricingRole(line)
+    if (role === "screws") screws += cost
+    else if (role === "labor") labor += cost
+    else if (role === "transport") transport += cost
+    else materials += cost
   }
 
   const appliedOverheads = input.overheads.reduce(

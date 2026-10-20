@@ -1,5 +1,6 @@
 import type { BackupData } from "@/data/types"
 import { DEFAULT_SETTINGS } from "@/data/types"
+import { normalizeCatalogGroups } from "@/lib/catalog-groups"
 
 export function parseBackup(input: unknown): BackupData {
   if (!input || typeof input !== "object") {
@@ -19,10 +20,15 @@ export function parseBackup(input: unknown): BackupData {
   if (!data.settings || typeof data.settings.vatRate !== "number") {
     throw new Error("הגדרות המע״מ חסרות בגיבוי")
   }
+  const catalog = data.catalog
   return {
     version: 1,
     exportedAt: typeof data.exportedAt === "string" ? data.exportedAt : new Date().toISOString(),
-    catalog: data.catalog,
+    catalogGroups: normalizeCatalogGroups(
+      Array.isArray(data.catalogGroups) ? data.catalogGroups : undefined,
+      catalog.map((item) => item.category),
+    ),
+    catalog: catalog,
     projects: data.projects,
     lines: data.lines,
     globalCosts: data.globalCosts,
@@ -38,6 +44,7 @@ export function emptyBackup(): BackupData {
   return {
     version: 1,
     exportedAt: new Date().toISOString(),
+    catalogGroups: normalizeCatalogGroups(undefined, []),
     catalog: [],
     projects: [],
     lines: [],

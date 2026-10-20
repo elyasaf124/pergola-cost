@@ -1,6 +1,7 @@
 import type {
   AppSettings,
   BackupData,
+  CatalogGroup,
   CatalogItem,
   GlobalCost,
   Project,
@@ -11,6 +12,8 @@ import type {
 export interface Repository {
   readonly mode: "development" | "production"
   loadAll(): Promise<BackupData>
+  saveCatalogGroup(group: CatalogGroup): Promise<void>
+  deleteCatalogGroup(id: string): Promise<void>
   saveCatalogItem(item: CatalogItem): Promise<void>
   deleteCatalogItem(id: string): Promise<void>
   saveProject(project: Project): Promise<void>

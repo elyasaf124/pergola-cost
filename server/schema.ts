@@ -1,5 +1,13 @@
 /** Same statements for the local dev database and for Neon. */
 export const SCHEMA_SQL = [
+  `CREATE TABLE IF NOT EXISTS catalog_groups (
+    id text PRIMARY KEY,
+    name text NOT NULL,
+    sort_order integer NOT NULL,
+    pricing_role text NOT NULL,
+    created_at text NOT NULL,
+    updated_at text NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS catalog (
     id text PRIMARY KEY,
     name text NOT NULL,

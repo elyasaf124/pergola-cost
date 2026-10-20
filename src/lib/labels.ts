@@ -1,4 +1,6 @@
-import type { Category, OverheadKind, PriceUnit } from "@/lib/pricing"
+import type { CatalogGroup } from "@/data/types"
+import type { Category, OverheadKind, PriceUnit, PricingRole } from "@/lib/pricing"
+import { pricingRoleForCategory } from "@/lib/catalog-groups"
 import type { ProjectLine } from "@/data/types"
 import { formatIls, formatQty } from "@/lib/format"
 
@@ -43,20 +45,29 @@ export const OVERHEAD_LABEL: Record<OverheadKind, string> = {
   hours: "שעות כפול תעריף",
 }
 
-export function quantityNoun(unit: PriceUnit, category: Category): string {
+export function quantityNoun(
+  unit: PriceUnit,
+  category: Category,
+  groups: CatalogGroup[] = [],
+): string {
   if (unit === "kg" || unit === "meter") return "מטר"
   if (unit === "sqm") return "מ״ר"
   if (unit === "hour") return "שעות"
-  if (category === "screws" || unit === "pack") return "יחידות"
+  if (pricingRoleForCategory(category, groups) === "screws" || unit === "pack") return "יחידות"
   return "יחידות"
 }
 
-export function perUnitPhrase(unit: PriceUnit, category: Category): string {
-  if (category === "screws" || unit === "pack") return "לבורג"
+export function perUnitPhrase(
+  unit: PriceUnit,
+  category: Category,
+  groups: CatalogGroup[] = [],
+): string {
+  const role = pricingRoleForCategory(category, groups)
+  if (role === "screws" || unit === "pack") return "לבורג"
   if (unit === "kg" || unit === "meter") return "למטר"
   if (unit === "sqm") return "למ״ר"
   if (unit === "hour") return "לשעה"
-  if (category === "transport") return "להובלה"
+  if (role === "transport") return "להובלה"
   return "ליחידה"
 }
 
@@ -64,15 +75,23 @@ export function unitPricePreview(
   unit: PriceUnit,
   category: Category,
   price: number,
+  groups: CatalogGroup[] = [],
 ): string {
-  return `${formatIls(price)} ${perUnitPhrase(unit, category)}`
+  return `${formatIls(price)} ${perUnitPhrase(unit, category, groups)}`
 }
 
-export function lineFormula(line: ProjectLine): string {
+export function lineFormula(line: ProjectLine, groups: CatalogGroup[] = []): string {
   if (line.unit === "kg" && line.kgPerMeter != null && line.pricePerKg != null) {
     return `${formatQty(line.quantity)} מ׳ × ${formatQty(line.kgPerMeter)} ק״ג/מ׳ × ${formatIls(line.pricePerKg)}`
   }
-  const noun = quantityNoun(line.unit, line.category)
-  const each = perUnitPhrase(line.unit, line.category)
+  const noun = quantityNoun(line.unit, line.category, groups)
+  const each = perUnitPhrase(line.unit, line.category, groups)
   return `${formatQty(line.quantity)} ${noun} × ${formatIls(line.unitPrice)} ${each}`
+}
+
+export const PRICING_ROLE_LABEL: Record<PricingRole, string> = {
+  materials: "חומרים (פרופילים, לוחות וכו׳)",
+  screws: "ברגים",
+  labor: "עבודה",
+  transport: "הובלה",
 }
